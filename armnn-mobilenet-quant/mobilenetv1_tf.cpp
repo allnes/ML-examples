@@ -12,7 +12,7 @@
 #include <armnn/Utils.hpp>
 #include <armnn/BackendRegistry.hpp>
 
-#include <armnnTfLiteParser/ITfLiteParser.hpp>
+#include "armnnTfParser/ITfParser.hpp"
 
 #include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>
@@ -126,8 +126,8 @@ int main(int argc, char* argv[])
     NormalizationParameters normParams;
 
     normParams.scale  = 1.0;
-    normParams.mean   = { 0.0, 0.0, 0.0 };
-    normParams.stddev = { 1.0, 1.0, 1.0 };
+    normParams.mean   = { 127.5, 127.5, 127.5 };
+    normParams.stddev = { 127.5, 127.5, 127.5 };
 
     // Load and preprocess input image
     const std::vector<TContainer> inputDataContainers
@@ -147,21 +147,23 @@ int main(int argc, char* argv[])
     // ------------------------------------------------------------------------
 
     // Import the TensorFlowLite model.
-    using IParser = armnnTfLiteParser::ITfLiteParser;
+    using IParser = armnnTfParser::ITfParser;
     auto armnnparser(IParser::Create());
     
-    armnn::INetworkPtr network = armnnparser->CreateNetworkFromBinaryFile(programOptions.modelPath.c_str());
+    armnn::INetworkPtr network = armnnparser->CreateNetworkFromBinaryFile(programOptions.modelPath.c_str(),
+                                                                        { {inputName, {1, inputTensorHeight, inputTensorWidth, 3}} },
+                                                                        { outputName });
     // Find the binding points for the input and output nodes
-
-    using BindingPointInfo = armnnTfLiteParser::BindingPointInfo;
-    const std::vector<BindingPointInfo> inputBindings  = { armnnparser->GetNetworkInputBindingInfo(0, inputName) };
-    const std::vector<BindingPointInfo> outputBindings = { armnnparser->GetNetworkOutputBindingInfo(0, outputName) };
+    using BindingPointInfo = armnnTfParser::BindingPointInfo;
+    const std::vector<BindingPointInfo> inputBindings  = { armnnparser->GetNetworkInputBindingInfo(inputName) };
+    const std::vector<BindingPointInfo> outputBindings = { armnnparser->GetNetworkOutputBindingInfo(outputName) };
 
 
     // ------------------------------------------------------------------------
     // Optimize graph and load the optimized graph onto a compute device
     // ------------------------------------------------------------------------
     // Optimize the network for a specific runtime compute device, e.g. CpuAcc, GpuAcc
+    
     armnn::IRuntime::CreationOptions options;
     armnn::IRuntimePtr runtime(armnn::IRuntime::Create(options));
     armnn::IOptimizedNetworkPtr optimizedNet = armnn::Optimize(*network,
@@ -177,7 +179,7 @@ int main(int argc, char* argv[])
     // Run graph on device
     // ------------------------------------------------------------------------
     std::cout << "Running network..." << std::endl;
-    const int NUM_ITER = 1000;
+    const int NUM_ITER = 100;
     auto startTime = Time::now();
     for (int i = 0; i < NUM_ITER; i++)
     {
